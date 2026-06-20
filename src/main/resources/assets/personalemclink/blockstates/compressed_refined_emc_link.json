@@ -1,0 +1,7 @@
+{
+  "variants": {
+    "": {
+      "model": "personalemclink:block/compressed_refined_emc_link"
+    }
+  }
+}

@@ -1,0 +1,17 @@
+{
+  "type": "minecraft:crafting_shaped",
+  "pattern": [
+    "ABA",
+    "BCB",
+    "ABA"
+  ],
+  "key": {
+    "A": { "item": "projecte:red_matter_block" },
+    "B": { "item": "projecte:red_matter" },
+    "C": { "item": "projecte:condenser_mk2" }
+  },
+  "result": {
+    "id": "personalemclink:personal_emc_link",
+    "count": 1
+  }
+}

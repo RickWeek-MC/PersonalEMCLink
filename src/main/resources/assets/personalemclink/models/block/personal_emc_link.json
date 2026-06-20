@@ -1,0 +1,6 @@
+{
+  "parent": "minecraft:block/cube_all",
+  "textures": {
+    "all": "personalemclink:block/personal_emc_link"
+  }
+}
