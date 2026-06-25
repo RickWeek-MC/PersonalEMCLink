@@ -1,25 +1,18 @@
+Personal EMC Link
 
-Installation information
-=======
+A simple ProjectE addon for NeoForge 1.21.1 that brings back the classic Personal EMC Links originally from ProjectEX. 
+Three different tiers of EMC Links are available: Personal, Refined and Compressed Refined.
 
-This template repository can be directly cloned to get you started with a new
-mod. Simply create a new repository cloned from this one, by following the
-instructions provided by [GitHub](https://docs.github.com/en/repositories/creating-and-managing-repositories/creating-a-repository-from-a-template).
 
-Once you have your clone, simply open the repository in the IDE of your choice. The usual recommendation for an IDE is either IntelliJ IDEA or Eclipse.
 
-If at any point you are missing libraries in your IDE, or you've run into problems you can
-run `gradlew --refresh-dependencies` to refresh the local cache. `gradlew clean` to reset everything 
-{this does not affect your code} and then start the process again.
+Important Note
 
-Mapping Names:
-============
-By default, the MDK is configured to use the official mapping names from Mojang for methods and fields 
-in the Minecraft codebase. These names are covered by a specific license. All modders should be aware of this
-license. For the latest license text, refer to the mapping file itself, or the reference copy here:
-https://github.com/NeoForged/NeoForm/blob/main/Mojang.md
+This is an unofficial addon and is not affiliated with the official ProjectE team in any form.
+If something breaks or doesn't work properly, that is on me. Please do not bother the ProjectE developers with bug reports regarding this mod.
 
-Additional Resources: 
-==========
-Community Documentation: https://docs.neoforged.net/  
-NeoForged Discord: https://discord.neoforged.net/
+
+
+Credits & License
+
+The textures and the original concept for this mod are directly taken from the classic ProjectEX. Big thanks to LatvianModder and the FTB Team for the amazing work done back in the day. Full credits.
+The original ProjectEX is licensed under GNU Lesser General Public License v3.0 (LGPL-3.0), the assets are used under it and this mod is released under the exact same terms.
