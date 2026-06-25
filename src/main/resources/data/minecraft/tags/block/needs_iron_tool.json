@@ -1,0 +1,8 @@
+{
+  "replace": false,
+  "values": [
+    "personalemclink:personal_emc_link",
+    "personalemclink:refined_emc_link",
+    "personalemclink:compressed_refined_emc_link"
+  ]
+}

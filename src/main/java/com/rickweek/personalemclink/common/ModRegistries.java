@@ -37,14 +37,20 @@ public class ModRegistries {
     public static final DeferredBlock<Block> PERSONAL_EMC_LINK_BLOCK = BLOCKS.register("personal_emc_link",
             () -> new PersonalEMCLinkBlock(BlockBehaviour.Properties.of()
                     .strength(3.0f)
+                    .destroyTime(3.5F)
+                    .explosionResistance(6.0F)
                     .requiresCorrectToolForDrops()));
     public static final DeferredBlock<Block> REFINED_EMC_LINK_BLOCK = BLOCKS.register("refined_emc_link",
             () -> new RefinedEMCLinkBlock(BlockBehaviour.Properties.of()
                     .strength(3.0f)
+                    .destroyTime(4F)
+                    .explosionResistance(8.0F)
                     .requiresCorrectToolForDrops()));
     public static final DeferredBlock<Block> COMPRESSED_REFINED_EMC_LINK_BLOCK = BLOCKS.register("compressed_refined_emc_link",
             () -> new CompressedRefinedEMCLinkBlock(BlockBehaviour.Properties.of()
                     .strength(3.0f)
+                    .destroyTime(4.5F)
+                    .explosionResistance(10.0F)
                     .requiresCorrectToolForDrops()));
 
     // BlockItems
