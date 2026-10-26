@@ -38,3 +38,4 @@ run/
 **/src/generated/**/.cache/
 repo/
 !**/src/**/repo/
+/libs/ProjectE-1.21.1-PE1.1.0.jar
