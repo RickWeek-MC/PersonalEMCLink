@@ -2,78 +2,23 @@ package com.rickweek.personalemclink.common.block;
 
 import com.mojang.serialization.MapCodec;
 import com.rickweek.personalemclink.common.ModRegistries;
-import net.minecraft.core.BlockPos;
-import net.minecraft.world.InteractionResult;
-import net.minecraft.world.entity.LivingEntity;
-import net.minecraft.world.entity.player.Player;
-import net.minecraft.world.item.ItemStack;
-import net.minecraft.world.level.Level;
 import net.minecraft.world.level.block.BaseEntityBlock;
-import net.minecraft.world.level.block.RenderShape;
-import net.minecraft.world.level.block.entity.BlockEntity;
-import net.minecraft.world.level.block.entity.BlockEntityTicker;
 import net.minecraft.world.level.block.entity.BlockEntityType;
-import net.minecraft.world.level.block.state.BlockState;
-import net.minecraft.world.phys.BlockHitResult;
-import org.jetbrains.annotations.Nullable;
 
-public class CompressedRefinedEMCLinkBlock extends BaseEntityBlock {
-
-    // set the owner
-    @Override
-    public void setPlacedBy(Level level, BlockPos pos, BlockState state, @Nullable LivingEntity placer, ItemStack stack) {
-        if (placer instanceof Player player) {
-            BlockEntity entity = level.getBlockEntity(pos);
-            if (entity instanceof BaseEMCLinkBlockEntity be) {
-                be.setOwnerUUID(player.getUUID());
-            }
-        }
-        super.setPlacedBy(level, pos, state, placer, stack);
-    }
-
+public class CompressedRefinedEMCLinkBlock extends BaseEMCLinkBlock {
     public static final MapCodec<CompressedRefinedEMCLinkBlock> CODEC = simpleCodec(CompressedRefinedEMCLinkBlock::new);
+
+    public CompressedRefinedEMCLinkBlock(Properties properties) {
+        super(properties);
+    }
 
     @Override
     protected MapCodec<? extends BaseEntityBlock> codec() {
         return CODEC;
     }
 
-    @Nullable
     @Override
-    public <T extends BlockEntity> BlockEntityTicker<T> getTicker(Level level, BlockState state, BlockEntityType<T> type) {
-        if (level.isClientSide()) return null;
-
-        return createTickerHelper(type, ModRegistries.COMPRESSED_REFINED_EMC_LINK_BE.get(),
-                (lvl, pos, st, blockEntity) -> blockEntity.tick(lvl, pos, st));
-    }
-
-    public CompressedRefinedEMCLinkBlock(Properties properties) {
-        super(properties);
-    }
-
-    @Nullable
-    @Override
-    public BlockEntity newBlockEntity(BlockPos pos, BlockState state) {
-        return new CompressedRefinedEMCLinkBlockEntity(pos, state);
-    }
-
-    @Override
-    public RenderShape getRenderShape(BlockState state) {
-        return RenderShape.MODEL;
-    }
-
-    @Override
-    protected InteractionResult useWithoutItem(BlockState state, Level level, BlockPos pos, Player player, BlockHitResult hitResult) {
-        if (!level.isClientSide) {
-            BlockEntity entity = level.getBlockEntity(pos);
-            if (entity instanceof BaseEMCLinkBlockEntity linkEntity) {
-                if (linkEntity.getOwnerUUID() == null) {
-                    linkEntity.setOwnerUUID(player.getUUID());
-                }
-
-                player.openMenu(linkEntity, pos);
-            }
-        }
-        return InteractionResult.SUCCESS;
+    protected BlockEntityType<? extends BaseEMCLinkBlockEntity> getBlockEntityType() {
+        return ModRegistries.COMPRESSED_REFINED_EMC_LINK_BE.get();
     }
 }

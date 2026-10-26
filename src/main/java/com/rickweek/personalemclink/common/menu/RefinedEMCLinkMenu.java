@@ -1,31 +1,18 @@
 package com.rickweek.personalemclink.common.menu;
 
 import com.rickweek.personalemclink.common.ModRegistries;
-import com.rickweek.personalemclink.common.block.BaseEMCLinkBlockEntity;
+import com.rickweek.personalemclink.common.block.RefinedEMCLinkBlockEntity;
 import net.minecraft.world.entity.player.Inventory;
 import net.minecraft.world.level.block.entity.BlockEntity;
-import net.neoforged.neoforge.items.IItemHandler;
-import net.neoforged.neoforge.items.ItemStackHandler;
-import net.neoforged.neoforge.items.SlotItemHandler;
+import org.jetbrains.annotations.Nullable;
 
 public class RefinedEMCLinkMenu extends BaseEMCLinkMenu {
 
-    public RefinedEMCLinkMenu(int containerId, Inventory playerInv, BlockEntity entity) {
-        super(ModRegistries.REFINED_EMC_LINK_MENU.get(), containerId, playerInv, (BaseEMCLinkBlockEntity) entity, 9);
+    public RefinedEMCLinkMenu(int containerId, Inventory playerInv, @Nullable BlockEntity entity) {
+        super(ModRegistries.REFINED_EMC_LINK_MENU.get(), containerId, entity);
 
-        IItemHandler targetInv = blockEntity != null ? blockEntity.targetInventory : new ItemStackHandler(9);
-        IItemHandler inputInv = blockEntity != null ? blockEntity.inputInventory : new ItemStackHandler(1);
-
-        // more ghostSlots than inputs
-        int ghostX = 89;
-        int ghostY = 17;
-        for (int i = 0; i < 3; ++i) {
-            for (int j = 0; j < 3; ++j) {
-                this.addSlot(new SlotItemHandler(targetInv, j + i * 3, ghostX + j * 18, ghostY + i * 18));
-            }
-        }
-
-        this.addSlot(new SlotItemHandler(inputInv, 0, 35, 35));
+        addGhostGrid(ghostHandler(RefinedEMCLinkBlockEntity.GHOST_SLOTS), 89, 17, 3, 3);
+        addInputGrid(inputHandler(RefinedEMCLinkBlockEntity.INPUT_SLOTS), 35, 35, 1, 1);
         addPlayerInventory(playerInv, 8, 84);
     }
 }

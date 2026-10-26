@@ -1,15 +1,19 @@
 package com.rickweek.personalemclink.common.block;
 
-import moze_intel.projecte.api.ItemInfo;
+import com.rickweek.personalemclink.common.util.EmcHelper;
+import com.rickweek.personalemclink.common.util.EmcSyncScheduler;
 import moze_intel.projecte.api.capabilities.IKnowledgeProvider;
-import moze_intel.projecte.api.capabilities.PECapabilities;
-import moze_intel.projecte.emc.EMCMappingHandler;
 import net.minecraft.core.BlockPos;
 import net.minecraft.core.Direction;
 import net.minecraft.core.HolderLookup;
 import net.minecraft.nbt.CompoundTag;
 import net.minecraft.network.chat.Component;
+import net.minecraft.network.protocol.Packet;
+import net.minecraft.network.protocol.game.ClientGamePacketListener;
+import net.minecraft.network.protocol.game.ClientboundBlockEntityDataPacket;
+import net.minecraft.server.MinecraftServer;
 import net.minecraft.server.level.ServerPlayer;
+import net.minecraft.world.Containers;
 import net.minecraft.world.MenuProvider;
 import net.minecraft.world.entity.player.Inventory;
 import net.minecraft.world.entity.player.Player;
@@ -19,10 +23,6 @@ import net.minecraft.world.level.Level;
 import net.minecraft.world.level.block.entity.BlockEntity;
 import net.minecraft.world.level.block.entity.BlockEntityType;
 import net.minecraft.world.level.block.state.BlockState;
-import net.minecraft.network.protocol.Packet;
-import net.minecraft.network.protocol.game.ClientGamePacketListener;
-import net.minecraft.network.protocol.game.ClientboundBlockEntityDataPacket;
-import net.minecraft.network.Connection;
 import net.neoforged.neoforge.items.IItemHandler;
 import net.neoforged.neoforge.items.ItemStackHandler;
 import org.jetbrains.annotations.NotNull;
@@ -32,168 +32,202 @@ import java.math.BigInteger;
 import java.util.UUID;
 
 public abstract class BaseEMCLinkBlockEntity extends BlockEntity implements MenuProvider {
+    @Nullable
     private UUID ownerUUID;
 
+    /** Ghost/filter slots: which items the link produces. Never contains real items. */
     public final ItemStackHandler targetInventory;
+    /** Items here get burned into the owner's EMC every tick. */
     public final ItemStackHandler inputInventory;
+    /** Exposed on every side except UP: lets pipes pull the ghost items, paid with the owner's EMC. */
     private final IItemHandler outputExtractionHandler;
 
-    public BaseEMCLinkBlockEntity(BlockEntityType<?> type, BlockPos pos, BlockState state, int inputSize, int ghostSize) {
+    protected BaseEMCLinkBlockEntity(BlockEntityType<?> type, BlockPos pos, BlockState state, int inputSize, int ghostSize) {
         super(type, pos, state);
 
-        // "burning" items slots
         this.inputInventory = new ItemStackHandler(inputSize) {
             @Override
-            protected void onContentsChanged(int slot) { setChanged(); }
+            protected void onContentsChanged(int slot) {
+                setChanged();
+            }
 
             @Override
             public boolean isItemValid(int slot, @NotNull ItemStack stack) {
-                return EMCMappingHandler.getStoredEmcValue(ItemInfo.fromStack(stack)) > 0;
+                return EmcHelper.canBurn(stack);
             }
-
-            @Override
-            public void setStackInSlot(int slot, @NotNull ItemStack stack) {
-                if (!stack.isEmpty() && EMCMappingHandler.getStoredEmcValue(ItemInfo.fromStack(stack)) <= 0) {
-                    return;
-                }
-                super.setStackInSlot(slot, stack);
-            }
+            // NOTE: no setStackInSlot override anymore. Refusing a stack there silently deleted
+            // the item when something called Slot.set() (sorters, other mods).
         };
 
-        // ghost item and output slots
         this.targetInventory = new ItemStackHandler(ghostSize) {
             @Override
-            protected void onContentsChanged(int slot) { setChanged(); }
+            protected void onContentsChanged(int slot) {
+                setChanged();
+            }
 
             @Override
             public boolean isItemValid(int slot, @NotNull ItemStack stack) {
-                return EMCMappingHandler.getStoredEmcValue(ItemInfo.fromStack(stack)) > 0;
-            }
-
-            @Override
-            public void setStackInSlot(int slot, @NotNull ItemStack stack) {
-                if (!stack.isEmpty() && EMCMappingHandler.getStoredEmcValue(ItemInfo.fromStack(stack)) <= 0) {
-                    return;
-                }
-                super.setStackInSlot(slot, stack);
-            }
-        };
-
-        // extractionHandler
-        this.outputExtractionHandler = new IItemHandler() {
-            @Override
-            public int getSlots() {
-                return targetInventory.getSlots();
-            }
-
-            @Override
-            public @NotNull ItemStack getStackInSlot(int slot) {
-                ItemStack ghostStack = targetInventory.getStackInSlot(slot);
-                // if no UUID is available or the ghostStack is empty returns EMPTY
-                if (ghostStack.isEmpty() || level == null || level.isClientSide() || level.getServer() == null || ownerUUID == null) {
-                    return ItemStack.EMPTY;
-                }
-
-                // if the owner goes offline the iventory returns EMPTY
-                Player player = level.getServer().getPlayerList().getPlayer(ownerUUID);
-                if (!(player instanceof ServerPlayer serverPlayer)) {
-                    return ItemStack.EMPTY;
-                }
-
-                // if the player has not the necessary EMC the inventory returns EMPTY to capabilities
-                IKnowledgeProvider provider = serverPlayer.getCapability(PECapabilities.KNOWLEDGE_CAPABILITY);
-                if (provider == null) return ItemStack.EMPTY;
-
-                long singleCost = EMCMappingHandler.getStoredEmcValue(ItemInfo.fromStack(ghostStack));
-                if (singleCost <= 0 || provider.getEmc().compareTo(BigInteger.valueOf(singleCost)) < 0) {
-                    return ItemStack.EMPTY;
-                }
-
-                ItemStack fakeStack = ghostStack.copy();
-                fakeStack.setCount(fakeStack.getMaxStackSize());
-                return fakeStack;
-            }
-
-            // the block doesn't accept inputs from this handler
-            @Override
-            public @NotNull ItemStack insertItem(int slot, @NotNull ItemStack stack, boolean simulate) {
-                return stack;
-            }
-
-            @Override
-            public @NotNull ItemStack extractItem(int slot, int amount, boolean simulate) {
-                ItemStack ghostStack = targetInventory.getStackInSlot(slot);
-                if (ghostStack.isEmpty() || level == null || level.isClientSide() || level.getServer() == null || ownerUUID == null) return ItemStack.EMPTY;
-
-                // if the player is offline this kills the extraction (no dupes)
-                Player player = level.getServer().getPlayerList().getPlayer(ownerUUID);
-                if (!(player instanceof ServerPlayer serverPlayer)) return ItemStack.EMPTY;
-
-                IKnowledgeProvider provider = serverPlayer.getCapability(PECapabilities.KNOWLEDGE_CAPABILITY);
-                if (provider == null) return ItemStack.EMPTY;
-
-                long singleCost = EMCMappingHandler.getStoredEmcValue(ItemInfo.fromStack(ghostStack));
-                if (singleCost <= 0) return ItemStack.EMPTY;
-
-                BigInteger currentEMC = provider.getEmc();
-                BigInteger costBig = BigInteger.valueOf(singleCost);
-
-                BigInteger maxAffordableBig = currentEMC.divide(costBig);
-                long maxAffordable = maxAffordableBig.compareTo(BigInteger.valueOf(Integer.MAX_VALUE)) > 0
-                        ? Integer.MAX_VALUE : maxAffordableBig.longValue();
-
-                if (maxAffordable <= 0) return ItemStack.EMPTY;
-
-                int actualAmount = Math.min(amount, (int) maxAffordable);
-                actualAmount = Math.min(actualAmount, ghostStack.getMaxStackSize());
-
-                if (actualAmount <= 0) return ItemStack.EMPTY;
-
-                if (!simulate) {
-                    BigInteger totalCost = BigInteger.valueOf((long) actualAmount * singleCost);
-                    provider.setEmc(currentEMC.subtract(totalCost));
-                    provider.syncEmc(serverPlayer);
-                    setChanged();
-                }
-
-                ItemStack extracted = ghostStack.copy();
-                extracted.setCount(actualAmount);
-                return extracted;
+                return EmcHelper.canBuy(stack);
             }
 
             @Override
             public int getSlotLimit(int slot) {
-                return 64;
-            }
-
-            @Override
-            public boolean isItemValid(int slot, @NotNull ItemStack stack) {
-                return false;
+                return 1;
             }
         };
+
+        this.outputExtractionHandler = new OutputHandler();
     }
 
-    // get owner
+    // ---------------------------------------------------------------- owner
+
+    @Nullable
     public UUID getOwnerUUID() {
-        return this.ownerUUID;
+        return ownerUUID;
     }
 
-    // set owner
     public void setOwnerUUID(UUID uuid) {
         this.ownerUUID = uuid;
         setChanged();
         if (level != null && !level.isClientSide()) {
-            BlockState state = level.getBlockState(worldPosition);
+            BlockState state = getBlockState();
             level.sendBlockUpdated(worldPosition, state, state, 3);
         }
     }
+
+    /** Only the owner (or an operator) can open the GUI. A link without owner gets claimed on first use. */
+    public boolean canUse(Player player) {
+        return ownerUUID == null || ownerUUID.equals(player.getUUID()) || player.hasPermissions(2);
+    }
+
+    /** The owner, only if online on this server. Offline owner = the link is paused. */
+    @Nullable
+    private ServerPlayer getOnlineOwner() {
+        if (ownerUUID == null || level == null || level.isClientSide()) return null;
+        MinecraftServer server = level.getServer();
+        return server == null ? null : server.getPlayerList().getPlayer(ownerUUID);
+    }
+
+    // ---------------------------------------------------------------- logic
+
+    /** Burns the input slots into the owner's EMC. Server side only (see BaseEMCLinkBlock#getTicker). */
+    public void serverTick(Level level, BlockPos pos, BlockState state) {
+        if (ownerUUID == null || isInputEmpty()) return;
+
+        ServerPlayer owner = getOnlineOwner();
+        if (owner == null) return;
+        IKnowledgeProvider provider = EmcHelper.getKnowledge(owner);
+        if (provider == null) return;
+
+        BigInteger gained = BigInteger.ZERO;
+        for (int i = 0; i < inputInventory.getSlots(); i++) {
+            ItemStack stack = inputInventory.getStackInSlot(i);
+            if (stack.isEmpty()) continue;
+
+            long unitValue = EmcHelper.getSellValue(stack);
+            if (unitValue <= 0) continue; // stays in the slot, can be taken back out
+
+            gained = gained.add(EmcHelper.total(unitValue, stack.getCount()));
+            inputInventory.setStackInSlot(i, ItemStack.EMPTY);
+        }
+
+        if (gained.signum() > 0) {
+            provider.setEmc(provider.getEmc().add(gained));
+            EmcSyncScheduler.markDirty(owner);
+        }
+    }
+
+    private boolean isInputEmpty() {
+        for (int i = 0; i < inputInventory.getSlots(); i++) {
+            if (!inputInventory.getStackInSlot(i).isEmpty()) return false;
+        }
+        return true;
+    }
+
+    /** Called when the block is broken: drops what's still in the input slots (e.g. owner was offline). */
+    public void dropInputContents(Level level, BlockPos pos) {
+        for (int i = 0; i < inputInventory.getSlots(); i++) {
+            ItemStack stack = inputInventory.getStackInSlot(i);
+            if (!stack.isEmpty()) {
+                Containers.dropItemStack(level, pos.getX(), pos.getY(), pos.getZ(), stack.copy());
+                inputInventory.setStackInSlot(i, ItemStack.EMPTY);
+            }
+        }
+    }
+
+    /** Inputs only from the top, outputs from all the other sides. */
+    public IItemHandler getItemHandler(@Nullable Direction side) {
+        return side == Direction.UP ? inputInventory : outputExtractionHandler;
+    }
+
+    /** Read-only view of the ghost slots: each one looks like a full stack, extraction costs the owner's EMC. */
+    private class OutputHandler implements IItemHandler {
+        @Override
+        public int getSlots() {
+            return targetInventory.getSlots();
+        }
+
+        @Override
+        public @NotNull ItemStack getStackInSlot(int slot) {
+            ItemStack ghost = targetInventory.getStackInSlot(slot);
+            if (ghost.isEmpty()) return ItemStack.EMPTY;
+
+            ServerPlayer owner = getOnlineOwner();
+            if (owner == null) return ItemStack.EMPTY;
+            IKnowledgeProvider provider = EmcHelper.getKnowledge(owner);
+            if (provider == null) return ItemStack.EMPTY;
+
+            int count = EmcHelper.affordable(provider.getEmc(), EmcHelper.getValue(ghost), ghost.getMaxStackSize());
+            return count > 0 ? ghost.copyWithCount(count) : ItemStack.EMPTY;
+        }
+
+        @Override
+        public @NotNull ItemStack insertItem(int slot, @NotNull ItemStack stack, boolean simulate) {
+            return stack;
+        }
+
+        @Override
+        public @NotNull ItemStack extractItem(int slot, int amount, boolean simulate) {
+            if (amount <= 0) return ItemStack.EMPTY;
+            ItemStack ghost = targetInventory.getStackInSlot(slot);
+            if (ghost.isEmpty()) return ItemStack.EMPTY;
+
+            // offline owner = no extraction (no free items)
+            ServerPlayer owner = getOnlineOwner();
+            if (owner == null) return ItemStack.EMPTY;
+            IKnowledgeProvider provider = EmcHelper.getKnowledge(owner);
+            if (provider == null) return ItemStack.EMPTY;
+
+            long unitCost = EmcHelper.getValue(ghost);
+            BigInteger emc = provider.getEmc();
+            int count = EmcHelper.affordable(emc, unitCost, Math.min(amount, ghost.getMaxStackSize()));
+            if (count <= 0) return ItemStack.EMPTY;
+
+            if (!simulate) {
+                provider.setEmc(emc.subtract(EmcHelper.total(unitCost, count)));
+                EmcSyncScheduler.markDirty(owner);
+            }
+            return ghost.copyWithCount(count);
+        }
+
+        @Override
+        public int getSlotLimit(int slot) {
+            return 64;
+        }
+
+        @Override
+        public boolean isItemValid(int slot, @NotNull ItemStack stack) {
+            return false;
+        }
+    }
+
+    // ---------------------------------------------------------------- save / sync
 
     @Override
     protected void saveAdditional(CompoundTag tag, HolderLookup.Provider registries) {
         super.saveAdditional(tag, registries);
         tag.put("TargetInventory", targetInventory.serializeNBT(registries));
         tag.put("InputInventory", inputInventory.serializeNBT(registries));
-
         if (ownerUUID != null) {
             tag.putUUID("OwnerUUID", ownerUUID);
         }
@@ -204,86 +238,27 @@ public abstract class BaseEMCLinkBlockEntity extends BlockEntity implements Menu
         super.loadAdditional(tag, registries);
         if (tag.contains("TargetInventory")) targetInventory.deserializeNBT(registries, tag.getCompound("TargetInventory"));
         if (tag.contains("InputInventory")) inputInventory.deserializeNBT(registries, tag.getCompound("InputInventory"));
-
-        if (tag.hasUUID("OwnerUUID")) {
-            ownerUUID = tag.getUUID("OwnerUUID");
-        }
-    }
-
-    public void tick(Level level, BlockPos pos, BlockState state) {
-        if (level.isClientSide() || ownerUUID == null) return;
-
-        boolean hasItems = false;
-        for (int i = 0; i < inputInventory.getSlots(); i++) {
-            if (!inputInventory.getStackInSlot(i).isEmpty()) {
-                hasItems = true;
-                break;
-            }
-        }
-        if (!hasItems) return;
-
-        // if the player is offline this stops the tick
-        Player player = level.getServer().getPlayerList().getPlayer(ownerUUID);
-        if (!(player instanceof ServerPlayer serverPlayer)) return;
-
-        IKnowledgeProvider provider = serverPlayer.getCapability(PECapabilities.KNOWLEDGE_CAPABILITY);
-        if (provider == null) return;
-
-        BigInteger emcToAdd = BigInteger.ZERO;
-        boolean hasBurnedSomething = false;
-
-        for (int i = 0; i < inputInventory.getSlots(); i++) {
-            ItemStack stack = inputInventory.getStackInSlot(i);
-            if (!stack.isEmpty()) {
-                long itemValue = EMCMappingHandler.getStoredEmcValue(ItemInfo.fromStack(stack));
-
-                if (itemValue > 0) {
-                    long totalStackValue = itemValue * stack.getCount();
-                    emcToAdd = emcToAdd.add(BigInteger.valueOf(totalStackValue));
-
-                    inputInventory.setStackInSlot(i, ItemStack.EMPTY);
-                    hasBurnedSomething = true;
-                }
-            }
-        }
-
-        if (hasBurnedSomething && emcToAdd.compareTo(BigInteger.ZERO) > 0) {
-            provider.setEmc(provider.getEmc().add(emcToAdd));
-            provider.syncEmc(serverPlayer);
-            setChanged();
-        }
-    }
-
-    // the block accepts input only from the top
-    public IItemHandler getItemHandler(Direction side) {
-        if (side == Direction.UP) {
-            return this.inputInventory;
-        }
-        return this.outputExtractionHandler;
+        ownerUUID = tag.hasUUID("OwnerUUID") ? tag.getUUID("OwnerUUID") : null;
     }
 
     @Override
     public CompoundTag getUpdateTag(HolderLookup.Provider registries) {
-        CompoundTag tag = super.getUpdateTag(registries);
-        saveAdditional(tag, registries);
-        return tag;
+        return saveCustomOnly(registries);
     }
 
     @Override
     public Packet<ClientGamePacketListener> getUpdatePacket() {
         return ClientboundBlockEntityDataPacket.create(this);
     }
+    // NOTE: no onDataPacket override: NeoForge's default already loads the tag,
+    // the old override loaded it a second time.
+
+    // ---------------------------------------------------------------- menu
 
     @Override
-    public void onDataPacket(Connection net, ClientboundBlockEntityDataPacket pkt, HolderLookup.Provider lookupProvider) {
-        super.onDataPacket(net, pkt, lookupProvider);
-        if (pkt.getTag() != null) {
-            loadAdditional(pkt.getTag(), lookupProvider);
-        }
+    public Component getDisplayName() {
+        return getBlockState().getBlock().getName();
     }
-
-    @Override
-    public abstract Component getDisplayName();
 
     @Nullable
     @Override
